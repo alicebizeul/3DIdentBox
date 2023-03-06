@@ -50,7 +50,7 @@ All combinaisons of _<span style="color: Crimson;">Information Blocks</span> : <
 | Style          |  $s=[s_1,s_2,s_3]$ |  $s \sim [\mathcal{U}([-1,1]),\mathcal{N}_{[-1,1]}(s_3,1),\mathcal{N}_{[-1,1]}(c_2,1)]$    |   $\tilde{s} \sim [\mathcal{N}_{[-1,1]}(s_1,1),\mathcal{N}_{[-1,1]}(s_2,1),\mathcal{N}_{[-1,1]}(s_3,1)]$               | Stochastic between views, causal dependencies between $c_2 \rightarrow s_3$, $s_3 \rightarrow s_2$ |
 | View-Specific    |  $m=[m_1,m_2,m_3]$ |  $m \sim [\mathcal{U}([-1,1]),\mathcal{\delta}(0),\mathcal{\delta}(0)]$  |   $\tilde{m} \sim [\mathcal{\delta}(0),\mathcal{\delta}(0),\mathcal{U}([-1,1])]$  | $m_1$ is specific to _View 1_, $m_2$ is constant, $m_3$ is specific to _View 2_ |
 
-$N_{[-1,1]}$ refers to a normal distribution truncated to the $[-1,1]$ interval. 
+$\mathcal{N}_{[-1,1]}$ refers to a normal distribution truncated to the $[-1,1]$ interval. 
 
 
 
