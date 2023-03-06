@@ -32,6 +32,8 @@ Each image is controlled by _9_ factors of variation partitioned into _3_ inform
 
 The generation of ground truth factors pairs follows specific distributions according to three sets of rules (i.e., <span style="color: RoyalBlue;">Block Type</span>). For each dataset, <span style="color: Crimson;">Information Blocks</span> are associated with a unique <span style="color: RoyalBlue;">Block Type</span>. Distributions linked to each <span style="color: RoyalBlue;">Block Type</span> are detailed below for _Multiview3DIdent_ and _CausalMultiview3DIdent_ respectively.
 
+All combinaisons of Information Block - Block Type are available. 
+
 ### Multiview3DIdent
 
 | <span style="color: RoyalBlue;">Block Type</span>  |Symbol | View 1 Distribution | View 2 Distribution | 
@@ -58,7 +60,7 @@ The sample pairs and their associated ground-truth factors can be downloaded her
 The folder structure follows the following logic:
 
 ```
-content_style_viewspecific             # folder name: content\_factors_style\_factors_viewspecific\_factors
+hues_positions_rotations               # example folder name
 ├── samples                            # sample pairs x = {x,\tilde{x}}
 │   ├── m1                             # x, first elements of each sample pair (e.g., "000000.png")
 │   │   └── *.png
@@ -72,7 +74,7 @@ content_style_viewspecific             # folder name: content\_factors_style\_fa
         ├── latents.npy  
         └── raw_latents.npy   
 ```
-Each folder contains a full dataset with various <span style="color: RoyalBlue;">Block Type</span> associated with each <span style="color: Crimson;">Information Block</span>. The folder name follows the 
+Each folder contains a full dataset with specific <span style="color: RoyalBlue;">Block Type</span> associated with each <span style="color: Crimson;">Information Block</span>. The example `hues_positions_rotations` folder name follows the folder name template `content_style_view\_specific`. In this example the _Hues_ block is content information, _Positions_ is style information and _Rotations_ is view-specific information. 
 ## Custom Generation
 - - -
 
