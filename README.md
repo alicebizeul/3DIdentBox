@@ -6,7 +6,7 @@ Official code base for the generation of the _CausalMultiview3DIdent_ and _Multi
 Learning](https://openreview.net/forum?id=U_2kuqoTcB) and featured at the [CLeaR datasets track 2023](https://www.cclear.cc/2023/CallforDatasets). Both datasets offer an identifiability benchmark by providing image/image pairs generated from controlled ground-truth factors using the [Blender](https://github.com/blender/blender) software. Ground-truth factors are independantly sampled for the _Multiview3DIdent_ dataset while non-trivial dependencies exist between  _CausalMultiview3DIdent_'s factors. 
 
 <p align="center">
-  <img src="https://github.com/imantdaunhawer/Multimodal3DIdent//blob/master/sample_image.png?raw=true" alt="Multiviewl3DIdent dataset example images" width=570 />
+  <img src="https://github.com/alicebizeul/Multimodal3DIdent/blob/main/sample_image.png" alt="Multiviewl3DIdent dataset example images" width=570 />
 </p>
 
 This repository offers the possibility to adjust generative assumptions to fit personal preferences and generate custom-made datasets. 
