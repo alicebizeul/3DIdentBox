@@ -1,12 +1,12 @@
-# 3DBoxIdent: Identifiability Benchmark Datasets
+# 3DIdentBox: Identifiability Benchmark Datasets
 
-[[_3DBoxIdent_ part 1]()][[_3DBoxIdent_ part 2]()][[Paper](https://openreview.net/forum?id=U_2kuqoTcB)]
+[[ 3DIdentBox part 1]()] [[ 3DIdentBox part 2]()] [[Paper](https://openreview.net/forum?id=U_2kuqoTcB)]
 
-Official code base for the generation of the _3DBoxIdent_ datasets presented in the paper [Identifiability Results for Multimodal Contrastive
-Learning](https://openreview.net/forum?id=U_2kuqoTcB) and featured at the [CLeaR datasets track 2023](https://www.cclear.cc/2023/CallforDatasets). This GitHub repository extends the [3DIdent](https://arxiv.org/pdf/2102.08850.pdf) dataset and builds on top of its [generation code](https://github.com/brendel-group/cl-ica). The _3DBoxIdent_ datasets offer an identifiability benchmark by providing image/image pairs generated from controlled ground-truth factors using the [Blender](https://github.com/blender/blender) software. Ground-truth factors are either independantly sampled (_part 1_) or non-trivial dependencies exist between factors (_part 2_). 
+Official code base for the generation of the _3DIdentBox_ datasets presented in the paper [Identifiability Results for Multimodal Contrastive
+Learning](https://openreview.net/forum?id=U_2kuqoTcB) and featured at the [CLeaR datasets track 2023](https://www.cclear.cc/2023/CallforDatasets). This GitHub repository extends the [3DIdent](https://arxiv.org/pdf/2102.08850.pdf) dataset and builds on top of its [generation code](https://github.com/brendel-group/cl-ica). The _3DIdentBox_ datasets offer an identifiability benchmark by providing image/image pairs generated from controlled ground-truth factors using the [Blender](https://github.com/blender/blender) software. Ground-truth factors are either independantly sampled (_part 1_) or non-trivial dependencies exist between factors (_part 2_). 
 
 <p align="center">
-  <img src="https://github.com/alicebizeul/Multimodal3DIdent/blob/main/sample_image.png" alt="Multiviewl3DIdent dataset example images" width=570 />
+  <img src="https://github.com/alicebizeul/3DIdentBox/blob/main/sample_image.png" alt="3DIdentBox dataset example images" width=570 />
 </p>
 
 This repository offers the possibility to adjust generative assumptions to fit personal preferences and generate custom-made datasets. 
@@ -38,19 +38,19 @@ All combinaisons of _<span style="color: Crimson;">Information Blocks</span> : <
 
 | Block Type | Symbol          | View 1 Distribution | View 2 Distribution | Description         |
 |----------- |------------------- |-------------------- |-------------------- |-------------------- |
-| Content    |  $c=[c_1,c_2,c_3]$ |  $c \sim [\mathcal{U}([-1,1]),\mathcal{U}([-1,1]),\mathcal{U}([-1,1])]$    |   $\tilde{c} \sim [\mathcal{\delta}(\tilde{c_1}-c_1),\mathcal{\delta}(\tilde{c_2}-c_2),\mathcal{\delta}(\tilde{c_3}-c_3)]$  | Shared between views |
-| Style      |  $s=[s_1,s_2,s_3]$ |  $s \sim [\mathcal{U}([-1,1]),\mathcal{U}([-1,1]),\mathcal{U}([-1,1])]$    |   $\tilde{s} \sim {\mathcal{N}_{[-1,1]}(s_1,1),\mathcal{N}_{[-1,1]}(s_2,1),\mathcal{N}_{[-1,1]}(s_3,1)}$ | Stochastic between views |
+| Content    |  $c=[c_1,c_2,c_3]$ |  $c \sim [\mathcal{U}([-1,1]),\mathcal{U}([-1,1]),\mathcal{U}([-1,1])]$    |   $\tilde{c} \sim [\mathcal{\delta}(c_1),\mathcal{\delta}(c_2),\mathcal{\delta}(c_3)]$  | Shared between views |
+| Style      |  $s=[s_1,s_2,s_3]$ |  $s \sim [\mathcal{U}([-1,1]),\mathcal{U}([-1,1]),\mathcal{U}([-1,1])]$    |   $\tilde{s} \sim {\mathcal{N}_{t}(s_1,1),\mathcal{N}_{t}(s_2,1),\mathcal{N}_{t}(s_3,1)}$ | Stochastic between views |
 | View-Specific|$m=[m_1,m_2,m_3]$ |  $m \sim [\mathcal{U}([-1,1]),\mathcal{\delta}(0),\mathcal{\delta}(0)]$  |   $\tilde{m} \sim [\mathcal{\delta}(0),\mathcal{\delta}(0),\mathcal{U}([-1,1])]$  | $m_1$ is specific to _View 1_, $m_2$ is constant, $m_3$ is specific to _View 2_ |
 
 ### Part 2: With inter- & intra- block causal dependencies
 
 | Block Type |    Symbol   | View 1 Distribution               | View 2 Distribution                   | Description          | 
 |----------  |------------ |---------------------------------- |-------------------------------------- |--------------------- |
-| Content    |  $c=[c_1,c_2,c_3]$ |  $c \sim [\mathcal{N}_{[-1,1]}(c_2,1),\mathcal{U}([-1,1]),\mathcal{U}([-1,1])]$    |   $\tilde{c} \sim [\mathcal{\delta}(\tilde{c_1}-c_1),\mathcal{\delta}(\tilde{c_2}-c_2),\mathcal{\delta}(\tilde{c_3}-c_3)]$  | Shared between views, causal dependencies between $c_2 \rightarrow c_1$ |
-| Style      |  $s=[s_1,s_2,s_3]$ |  $s \sim [\mathcal{U}([-1,1]),\mathcal{N}_{[-1,1]}(s_3,1),\mathcal{U}([-1,1]),\mathcal{U}([-1,1]),\mathcal{U}([-1,1])$    |   $\tilde{s} \sim [\mathcal{N}_t(s_1,1),\mathcal{N}_t(s_2,1),\mathcal{N}_t (s_3,1)]$               | Stochastic between views, causal dependencies between $c_2 \rightarrow s_3$, $s_3 \rightarrow s_2$ |
+| Content    |  $c=[c_1,c_2,c_3]$ |  $c \sim [\mathcal{N}_{t}(c_2,1),\mathcal{U}([-1,1]),\mathcal{U}([-1,1])]$    |   $\tilde{c} \sim [\mathcal{\delta}(c_1),\mathcal{\delta}(c_2),\mathcal{\delta}(c_3)]$  | Shared between views, causal dependencies between $c_2 \rightarrow c_1$ |
+| Style      |  $s=[s_1,s_2,s_3]$ |  $s \sim [\mathcal{U}([-1,1]),\mathcal{N}_t (s_3,1),\mathcal{N}_t (c_2,1)]$    |   $\tilde{s} \sim [\mathcal{N}_t (s_1,1),\mathcal{N}_t (s_2,1),\mathcal{N}_t (s_3,1)]$               | Stochastic between views, causal dependencies between $c_2 \rightarrow s_3$, $s_3 \rightarrow s_2$ |
 | View-Specific|$m=[m_1,m_2,m_3]$ |  $m \sim [\mathcal{U}([-1,1]),\mathcal{\delta}(0),\mathcal{\delta}(0)]$  |   $\tilde{m} \sim [\mathcal{\delta}(0),\mathcal{\delta}(0),\mathcal{U}([-1,1])]$  | $m_1$ is specific to _View 1_, $m_2$ is constant, $m_3$ is specific to _View 2_ |
 
-$\mathcal{N}_{[-1,1]}$ refers to a normal distribution truncated to the $[-1,1]$ interval. 
+$\mathcal{N}_t$ refers to a normal distribution truncated to the $[-1,1]$ interval. 
 
 
 
@@ -58,8 +58,8 @@ $\mathcal{N}_{[-1,1]}$ refers to a normal distribution truncated to the $[-1,1]$
 - - -
 
 The sample pairs and their associated ground-truth factors can be downloaded here:
-* [_3DBoxIdent_ part 1]()
-* [_3DBoxIdent_ part 2]()
+* [_3DIdentBox_ part 1]()
+* [_3DIdentBox_ part 2]()
 
 The folder structure follows the following logic:
 
