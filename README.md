@@ -1,6 +1,6 @@
 # 3DIdentBox: Identifiability Benchmark Datasets
 
-[[ 3DIdentBox part 1]()] [[ 3DIdentBox part 2]()] [[Paper](https://openreview.net/forum?id=U_2kuqoTcB)]
+[[3DIdentBox part 1]()] [[3DIdentBox part 2]()] [[Paper](https://openreview.net/forum?id=U_2kuqoTcB)]
 
 Official code base for the generation of the _3DIdentBox_ datasets presented in the paper [Identifiability Results for Multimodal Contrastive
 Learning](https://openreview.net/forum?id=U_2kuqoTcB) and featured at the [CLeaR datasets track 2023](https://www.cclear.cc/2023/CallforDatasets). This GitHub repository extends the [3DIdent](https://arxiv.org/pdf/2102.08850.pdf) dataset and builds on top of its [generation code](https://github.com/brendel-group/cl-ica). The _3DIdentBox_ datasets offer an identifiability benchmark by providing image/image pairs generated from controlled ground-truth factors using the [Blender](https://github.com/blender/blender) software. Ground-truth factors are either independantly sampled (_part 1_) or non-trivial dependencies exist between factors (_part 2_). 
