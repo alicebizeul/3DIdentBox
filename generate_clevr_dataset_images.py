@@ -1,4 +1,9 @@
-"""Generate image renderings for 3DIdent dataset."""
+"""Render images for 3DIdentBox
+This code builds on the following projects:
+- https://github.com/brendel-group/cl-ica
+- https://github.com/ysharma1126/ssl_identifiability
+"""
+
 import sys
 sys.path.append('.')
 sys.path.append('../../')
@@ -10,37 +15,43 @@ import colorsys
 import sys
 import site
 
-
 def main(args):
-    print('This is my arguments ',args)
+
     args.output_folder = pathlib.Path(args.output_folder).absolute()
 
+    # loading generative factors
     latents_path = os.path.join(args.output_folder, "latents.npy")
     if not os.path.exists(latents_path):
         raise ValueError("Latents could not be found; run latent generation first")
 
     latents = np.load(latents_path)
     n_samples = len(latents)
+    n_object = (latents.shape[1] // 9) # without object
 
+    # what if we want to have multiple textures, change object type
+
+    # setting the material name
     if args.material_names is None:
-        args.material_names = ["Rubber"] * ((latents.shape[1] - 1) // 8)
+        args.material_names = ["Rubber"] * n_object 
+    elif args.material_names in ["Rubber","Crystal","Metallic"]: 
+        args.material_names = args.material_names * n_object
+    else: assert NotImplementedError("Material name should Rubber, Metallic or Crystal")
+
+    # setting the shape
     if args.shape_names is None:
-        args.shape_names = ["Teapot"] * ((latents.shape[1] - 1) // 8)
-    else:
-        args.shape_names = args.shape_names * ((latents.shape[1] - 1) // 8)
-    if len(args.material_names) == 1:
-        args.material_names = args.material_names * ((latents.shape[1] - 1) // 8)
+        args.shape_names = ["Teapot"] * n_object
+    elif args.shape_names in ["Armardillo","Bunny","Cow","Dragon","Head","Horse","Spot","Teapot"]:
+        args.shape_names = args.shape_names * n_object
+    else: assert NotImplementedError("Shape name should be Armadillo, Bunny, Cow, Dragon, Head, Horse, Spot or Teapot")
 
-    assert len(args.material_names) == (latents.shape[1] - 1) // 8
-
+    # defining instance number for given batch
     indices = np.array_split(np.arange(n_samples), args.n_batches)[args.batch_index]
-
     print(f"Rendering samples in range: {min(indices)} - {max(indices)}")
 
+    # defining image folder
     output_image_folder = os.path.join(args.output_folder, "images")
 
-    print(args)
-
+    # creating default scene
     initialize_renderer(
         args.shape_names,
         args.material_names,
@@ -49,9 +60,8 @@ def main(args):
         use_gpu=args.use_gpu,
     )
 
-    print('out of initialisation')
-
-    for i, idx in enumerate(indices):
+    # image creation
+    for _, idx in enumerate(indices):
         output_filename = os.path.join(
             output_image_folder,
             f"{str(idx).zfill(6)}.png",
@@ -62,9 +72,6 @@ def main(args):
 
         current_latents = latents[idx]
 
-        if args.multimodal:
-            modality = args.modality
-
         print('getting into rendering')
         render_sample(
             current_latents,
@@ -72,7 +79,6 @@ def main(args):
             not args.no_spotlights,
             output_filename,
             args.save_scene,
-            modality=modality if args.multimodal else None
         )
         print('done with rendering')
 
@@ -93,7 +99,7 @@ def initialize_renderer(
     """Initialize renderer and base scene"""
 
     base_path = pathlib.Path(__file__).parent.absolute()
-    print("This is my basepath",base_path)
+
     # Load the main blendfile
     base_scene = os.path.join(base_path, "data", "scenes", "base_scene_equal_xyz.blend")
     bpy.ops.wm.open_mainfile(filepath=base_scene)
@@ -255,7 +261,7 @@ def update_objects_and_lights(latents, material_names, update_lights):
     """Parse latents and update the object(s) position, rotation and color
     as well as the spotlight's position and color."""
 
-    objects_latents = np.array_split(latents, (len(latents) - 1) // 8)
+    objects_latents = np.array_split(latents, len(material_names))
 
     max_object_size = max(
         [max(o.dimensions) for o in bpy.data.objects if "Object_" in o.name]
@@ -274,23 +280,18 @@ def update_objects_and_lights(latents, material_names, update_lights):
 
         # update object location and rotation
         object = bpy.data.objects[object_name]
-        print("Inside",max_object_size,object_latents[2])
         object.location = (
             object_latents[0],
             object_latents[1],
             object_latents[2] + max_object_size / 2,
         )
 
-        object.rotation_euler = tuple(object_latents[3:6])
+        object.rotation_euler = tuple(object_latents[3:6])  # replace gamma angle
 
         # update object color
         rgba_object = colorsys.hsv_to_rgb(
             object_latents[7] / (2.0 * np.pi), 1.0, 1.0,
-        ) + (1.0,)    # 1.0, 1.0
-
-
-        print("location of the object",object.location)
-
+        ) + (1.0,)
 
         render_utils.change_material(
             bpy.data.objects[object_name].data.materials[-1], Color=rgba_object
@@ -308,23 +309,11 @@ def update_objects_and_lights(latents, material_names, update_lights):
             )
 
 
-def render_sample(latents, material_names, include_lights, output_filename, save_scene, modality):
+def render_sample(latents, material_names, include_lights, output_filename, save_scene):
     """Update the scene based on the latents and render the scene and save as an image."""
 
-    if modality is not None:
-        if modality == 0:
-            saturation = 0.6
-            value = 1.0
-        elif modality == 1:
-            saturation = 0.6
-            value = 1.0
-            print("this",latents[9],2.0*np.pi)
-            latents[9] = latents[9]*(-1)
-            latents[7] = latents[7]*(-1)
-            print("becam",latents[9])
-    else:
-        saturation = 0.6
-        value = 1.0
+    saturation = 0.6
+    value = 1.0
 
     # set output path
     bpy.context.scene.render.filepath = output_filename
@@ -334,7 +323,7 @@ def render_sample(latents, material_names, include_lights, output_filename, save
 
     rgba_background = colorsys.hsv_to_rgb(latents[9] / (2.0 * np.pi), saturation, value) + (
         1.0,
-    )   # 0.6, 1.0
+    ) 
     render_utils.change_material(
         bpy.data.objects["Ground"].data.materials[-1], Color=rgba_background,
     )
@@ -379,8 +368,6 @@ if __name__ == "__main__":
     parser.add_argument("--material-names", nargs="+", type=str)
     parser.add_argument("--shape-names", nargs="+", type=str)
     parser.add_argument("--save-scene", action="store_true")
-    parser.add_argument("--multimodal", action="store_true")
-    parser.add_argument("--modality", default=0, type=int)
     parser.add_argument("--no_range_change",action="store_true")
 
     if INSIDE_BLENDER:
