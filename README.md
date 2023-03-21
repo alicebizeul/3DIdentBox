@@ -1,6 +1,6 @@
 # 3DIdentBox: Identifiability Benchmark Datasets
 
-[[3DIdentBox part 1]()] [[3DIdentBox part 2]()] [[Paper](https://openreview.net/forum?id=U_2kuqoTcB)]
+[[3DIdentBox part 1]()] [[3DIdentBox part 2]()] [[Paper](https://arxiv.org/abs/2303.09166)]
 
 Official code base for the generation of the _3DIdentBox_ datasets presented in the paper [Identifiability Results for Multimodal Contrastive
 Learning](https://openreview.net/forum?id=U_2kuqoTcB) and submitted to the [CLeaR Dataset Track 2023](https://www.cclear.cc/2023/CallforDatasets). This GitHub repository extends the [3DIdent](https://arxiv.org/pdf/2102.08850.pdf) dataset and builds on top of its [generation code](https://github.com/brendel-group/cl-ica) to provide a versatile toolbox for identifiability benchmarking. The _3DIdentBox_ datasets comprises image/image pairs generated from controlled ground-truth factors using the [Blender](https://github.com/blender/blender) software. Ground-truth factors are either independantly sampled (_part 1_) or non-trivial causal dependencies exist between factors (_part 2_). 
@@ -85,9 +85,11 @@ The following command generates latents for 10 pairs of images depicting a scene
 In this particular setting ```---object-content``` sets the object type as content, ```---position-style``` sets the object position as style, ```---rotation-style``` sets the object and spotlight rotation as style and ```---hue-ms``` sets the scene hues as modality-specific information. By default, view 1 and view 2 content and style information follow uniform and normal distributions respectively. However, the default settings can be adapted by setting the ```---continuous-marginal``` and ```---continuous-conditional``` parameters to a ```normal``` or ```uniform``` distributions. In addition, the standard deviation of normal marginal and conditional distribution can be adjusted to custom settings by adjusting the ```---normal-marginal-std```,```---normal-conditional-std``` (for style variables),```---normal-conditional-noise``` (for content variables) respectively. In a similar fashion, the lower and upper bound of uniform distributions can be customized by djusting the ```--uniform-marginal-a ``` (lower bound), ```--uniform-marginal-b ``` (upper bound), ```--uniform-conditional-a ``` (lower bound - for content variables), ```--uniform-conditional-b ``` (upper bound - for content variables), ```--uniform-conditional-noise-a ``` (lower bound - for style variables), ```--uniform-conditional-noise-b ``` (upper bound - for style variables)
 
 ```
+############# ADAPT THE FOLLOWING PARAMETERS ###############
 OUTPUT_FOLDER="example"    # output folder for latent and image storage
 SAMPLE_PAIRS=10            # number of sample pairs
 NB_OBJECTS=2               # number of objects per image
+############################################################
 
 python generate_clevr_dataset_latents.py --output-folder ${OUTPUT_FOLDER} --n-pairs ${SAMPLE_PAIRS} --object --position --rotation --hue --object-content --position-style --rotation-style --hue-ms --n-object ${NB_OBJECTS} 
 ```
@@ -98,7 +100,7 @@ The following command renders images based on previously generated latents store
 ############# ADAPT THE FOLLOWING PARAMETERS ###############
 BLENDER_DIR=/example/blender                        # path to blender software
 OUTPUT_FOLDER="example"                             # output folder for latent and image storage
-LATENT_FOLDER="example_subfolder"
+LATENT_FOLDER="example_subfolder"                   # subfolder where latents are stored
 MATERIAL="MyMetal"                                  # adjust: MyMetal, MyCristal, MyRubber
 ############################################################
 
@@ -130,7 +132,6 @@ If you find our datasets useful, please cite our paper:
   year = {2023}
 }
 ```
-<!-- TODO adjust bibtex? -->
 
 ## Acknowledgements
 - - -
