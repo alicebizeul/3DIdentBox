@@ -1,781 +1,204 @@
-"""Create latents for 3DIdent dataset."""
-
+"""Create latents for 3DIdent dataset.
+This code builds on the following projects:
+- https://github.com/brendel-group/cl-ica
+- https://github.com/ysharma1126/ssl_identifiability
+"""
 import sys
 sys.path.append('../../')
 import os
-import numpy as np
+import torch
 import spaces
 import latent_spaces
 import argparse
-import spaces_utils
+import numpy as np
+import pandas as pd
 
+# make sure commands are consistent
+# only one object for fixed position
+# make sure the conditional multinomial gives right values
+# no multinomial noise is one object
+# max classes object 8
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n-points", default=1000000, type=int)
+    # general parameters
+    parser.add_argument("--n-pairs", default=1000000, type=int)
     parser.add_argument("--n-objects", default=1, type=int)
     parser.add_argument("--output-folder", required=True, type=str)
-    parser.add_argument("--position-only", action="store_true")
-    parser.add_argument("--rotation-and-color-only", action="store_true")
-    parser.add_argument("--rotation-only", action="store_true")
-    parser.add_argument("--color-only", action="store_true")
-    parser.add_argument("--fixed-spotlight", action="store_true")
-    parser.add_argument("--non-periodic-rotation-and-color", action="store_true")
-    parser.add_argument("--deterministic", action="store_true")
-    parser.add_argument("--multimodal", action="store_true")
-    parser.add_argument("--mi", action="store_true")
-    parser.add_argument("--basic", action="store_true")
-    parser.add_argument("--all-hues", action="store_true")
-    parser.add_argument("--all-positions", action="store_true")
-    parser.add_argument("--all-rotations", action="store_true")
-    parser.add_argument("--debug",action="store_true")
-    parser.add_argument("--debug2",action="store_true")
-    parser.add_argument("--debug3",action="store_true")
-    parser.add_argument("--first_content", action="store_true")
+    parser.add_argument("--causal", action="store_true")
+
+    # factors of variations
+    parser.add_argument("--object", action="store_true")
+    parser.add_argument("--position", action="store_true")
+    parser.add_argument("--rotation", action="store_true")
+    parser.add_argument("--hue", action="store_true")
+
+    # structural model
+    parser.add_argument("--object-content", action="store_true")
+    parser.add_argument("--object-style", action="store_true")
+    parser.add_argument("--object-ms", action="store_true")
+    parser.add_argument("--position-content", action="store_true")
+    parser.add_argument("--position-style", action="store_true")
+    parser.add_argument("--position-ms", action="store_true")
+    parser.add_argument("--rotation-content", action="store_true")
+    parser.add_argument("--rotation-style", action="store_true")
+    parser.add_argument("--rotation-ms", action="store_true")
+    parser.add_argument("--hue-content", action="store_true")
+    parser.add_argument("--hue-style", action="store_true")
+    parser.add_argument("--hue-ms", action="store_true")
+
+    # causal relationships
+    parser.add_argument("--intra-content", action="store_true")
+    parser.add_argument("--intra-style", action="store_true")
+    parser.add_argument("--inter-content-style", action="store_true")
+
+    # generative parameters
+    parser.add_argument("--min", type=float, default=-1.0)
+    parser.add_argument("--max", type=float, default=1.0)
+    parser.add_argument("--continuous-marginal", type=str, default="uniform")
+    parser.add_argument("--continuous-conditional", type=str, default="normal")
+    parser.add_argument("--normal-marginal-std", type=float, default=1.0)
+    parser.add_argument("--normal-conditional-std", type=float, default=1.0)
+    parser.add_argument("--normal-conditional-noise", type=float, default=1.0)
+    parser.add_argument("--uniform-marginal-a", type=float, default=-1.0)
+    parser.add_argument("--uniform-marginal-b", type=float, default=1.0)
+    parser.add_argument("--uniform-conditional-a", type=float, default=-0.1)
+    parser.add_argument("--uniform-conditional-b", type=float, default=0.1)
+    parser.add_argument("--uniform-conditional-noise-a", type=float, default=-0.1)
+    parser.add_argument("--uniform-conditional-noise-b", type=float, default=0.1)
+    parser.add_argument("--multinomial-noise",type=int,default=3)
 
     args = parser.parse_args()
 
-    print(args)
-
-    assert not (
-        args.position_only and args.rotation_and_color_only
-    ), "Only either position-only or rotation-and-color-only can be set"
-
     os.makedirs(args.output_folder, exist_ok=True)
+    os.makedirs(os.path.join(args.output_folder,"m1"), exist_ok=True)
+    os.makedirs(os.path.join(args.output_folder,"m2"), exist_ok=True)
 
-    """
-    render internally assumes the variables form these value ranges:
-    
-    per object:
-        0. x position in [-3, -3]
-        1. y position in [-3, -3]
-        2. z position in [-3, -3]
-        3. alpha rotation in [0, 2pi]
-        4. beta rotation in [0, 2pi]
-        5. gamma rotation in [0, 2pi]
-        6. theta spot light in [0, 2pi]
-        7. hue object in [0, 2pi]
-        8. hue spot light in [0, 2pi]
-    
-    per scene:
-        9. hue background in [0, 2pi]
-    """
+    # create model partition
+    latent_list={"content":{},"style":{},"ms":{}}
+    if args.object: 
+        gen_type = ["content","style","ms"][np.argmax(1*[args.object_content,args.object_style,args.object_ms])]
+        latent_list[gen_type]["object"] = None  
+    if args.position: 
+        gen_type = ["content","style","ms"][np.argmax(1*[args.position_content,args.position_style,args.position_ms])]
+        latent_list[gen_type]["position_x"] = None
+        latent_list[gen_type]["position_y"] = None
+        latent_list[gen_type]["position_z"] = None
+    if args.rotation: 
+        gen_type = ["content","style","ms"][np.argmax(1*[args.rotation_content,args.rotation_style,args.rotation_ms])]
+        latent_list[gen_type]["rotation_object_alpha"] = None
+        latent_list[gen_type]["rotation_object_beta"] = None
+        latent_list[gen_type]["rotation_spot"] = None
+    if args.hue: 
+        gen_type = ["content","style","ms"][np.argmax(1*[args.hue_content,args.hue_style,args.hue_ms])]
+        latent_list[gen_type]["object_hue"] = None
+        latent_list[gen_type]["back_hue"] = None
+        latent_list[gen_type]["spot_hue"] = None
 
-    n_angular_variables = args.n_objects * 6 + 1
-    n_non_angular_variables = args.n_objects * 3
-
-    if args.non_periodic_rotation_and_color:
-        print("Got in the first loop")
-        if args.mi:
-            s = latent_spaces.ProductLatentSpace(
-                [
-                    latent_spaces.LatentSpace(
-                        spaces.NBoxSpace(n_non_angular_variables + n_angular_variables-3),
-                        lambda space, size, device: space.uniform(size, device=device),
-                        lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                    ),
-                    latent_spaces.LatentSpace(
-                        spaces.NBoxSpace(3,min_=-1.0,max_=1.0),   # original -0.25, 0.25
-                        lambda space, size, device: space.uniform(size, device=device),
-                        lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                    ),
-                ]
-            )
-        elif args.basic:
-            s = latent_spaces.ProductLatentSpace(
-                [   latent_spaces.LatentSpace(
-                        spaces.NBoxSpace(3,min_=-1.0,max_=1.0),   # original -0.25, 0.25
-                        lambda space, size, device: space.uniform(size, device=device),
-                        lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                    ),
-                    latent_spaces.LatentSpace(
-                        spaces.NBoxSpace(n_non_angular_variables + n_angular_variables-3),
-                        lambda space, size, device: space.uniform(size, device=device),
-                        lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                    ),
-                ]
-            )
-        elif args.multimodal and args.all_hues:
-            if args.first_content:
-                s = latent_spaces.ProductLatentSpace(
-                    [
-                        # Positions
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        # Rotations
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),                        
-                        ##### rotation angle fixed here
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                        # spotlight position
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                        # Hues
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.uniform(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                    ]
-                )
-            else:
-                s = latent_spaces.ProductLatentSpace(
-                    [
-                        # Positions
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                        # Rotations
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),                        
-                        ##### rotation angle fixed here
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-
-                        # spotlight position
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        # Hues
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.uniform(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                    ]
-                )
-        elif args.multimodal and args.all_positions:
-            if args.first_content:
-                s = latent_spaces.ProductLatentSpace(
-                    [
-                        # Positions 
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.uniform(size, device),
-                        ),                    
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        # Rotations
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),                        
-                        ##### rotation angle fixed here
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        # spotlight position
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        # Hues
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                    ]
-                )
-            else:
-                s = latent_spaces.ProductLatentSpace(
-                    [
-                        # Positions 
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.uniform(size, device),
-                        ),                    
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        # Rotations
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),                        
-                        ##### rotation angle fixed here
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                        # spotlight position
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                        # Hues
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                    ]
-                )
-        elif args.multimodal and args.all_rotations:
-            if args.first_content:
-                s = latent_spaces.ProductLatentSpace(
-                    [
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.uniform(size, device=device),
-                        ),
-                        # removed second rotation
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                    ]
-                )
-            else: 
-                s = latent_spaces.ProductLatentSpace(
-                    [
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.uniform(size, device=device),
-                        ),
-                        # removed second rotation
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                    ]
-                )
-
-        elif args.debug:  # spotlight limited
-
-            s = latent_spaces.ProductLatentSpace(
-                    [
-                        # Positions 
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.uniform(size, device),
-                        ),                    
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        # Rotations
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),                        
-                        ##### rotation angle fixed here
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        # spotlight position
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1,-1,0),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        # Hues
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                    ]
-                )
-
-            # s = latent_spaces.ProductLatentSpace(
-            #     [
-            #         latent_spaces.LatentSpace(
-            #             spaces.NBoxSpace(3),
-            #             lambda space, size, device: space.uniform(size, device=device),
-            #             lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-            #         ),
-            #         latent_spaces.LatentSpace(
-            #             spaces.NBoxSpace(n_non_angular_variables + n_angular_variables-3-3),
-            #             lambda space, size, device: space.uniform(size, device=device),
-            #             lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-            #         ),
-            #         latent_spaces.LatentSpace(
-            #             spaces.NBoxSpace(1),
-            #             lambda space, size, device: space.uniform(size, device=device),
-            #             lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-            #         ),
-            #         latent_spaces.LatentSpace(
-            #             spaces.NBoxSpace(1),
-            #             lambda space, size, device: space.uniform(size, device=device),
-            #             lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-            #         ),
-            #         latent_spaces.LatentSpace(
-            #             spaces.NBoxSpace(1),
-            #             lambda space, size, device: space.uniform(size, device=device),
-            #             lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-            #         ),
-            #     ]
-            # )
-
-        elif args.debug2:
-
-            s = latent_spaces.ProductLatentSpace(
-                    [
-                        # Positions 
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.uniform(size, device),
-                        ),                    
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        # Rotations
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),                        
-                        ##### rotation angle fixed here
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        # spotlight position
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        # Hues
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                    ]
-                )
-
-        elif args.debug3:
-
-            s = latent_spaces.ProductLatentSpace(
-                    [
-                        # Positions 
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.uniform(size, device),
-                        ),                    
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        # Rotations
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1,0,1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),                     
-                        ##### rotation angle fixed here
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1,-1,0),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ), 
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.delta(size, device=device),
-                            lambda space, mean, std, size, device: space.delta(size, device=device),
-                        ),
-                        # spotlight position
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(1),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.normal(mean, std, size, device),
-                        ),
-                        # Hues
-                        latent_spaces.LatentSpace(
-                            spaces.NBoxSpace(3),
-                            lambda space, size, device: space.uniform(size, device=device),
-                            lambda space, mean, std, size, device: space.trunc_normal(mean, std, size, device),
-                        ),
-                    ]
-                )
-            
-
-
-        else:
-            s = latent_spaces.LatentSpace(
-                spaces.NBoxSpace(n_non_angular_variables + n_angular_variables),
-                lambda space, size, device: space.uniform(size, device=device),
-                None,
-            )
-            
-
-    else:
-        s = latent_spaces.ProductLatentSpace(
-            [
-                latent_spaces.LatentSpace(
-                    spaces.NBoxSpace(n_non_angular_variables),
-                    lambda space, size, device: space.uniform(size, device=device),
-                    None,
-                ),
-                latent_spaces.LatentSpace(
-                    spaces.NSphereSpace(n_angular_variables + 1),
-                    lambda space, size, device: space.uniform(size, device=device),
-                    None,
-                ),
-            ]
-        )
-
-    if args.deterministic: 
-        if args.mi:
-            raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-            raw_latents_view2 = s.sample_conditional(raw_latents_view1,[0.0,1.0], size=int(args.n_points/2), device="cpu").numpy()   # [1.0,0.5] for mi originally 
-            raw_latents_view1 = raw_latents_view1.numpy()
-            #if args.all_hues: 
-            #    raw_latents_view2[:7] = raw_latents_view1[:7]
-            #else: raise("Other data augmentations are not yet supported")
-
-            raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
-        elif args.basic:
-            raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-            raw_latents_view2 = s.sample_conditional(raw_latents_view1,[1.0,0.0], size=int(args.n_points/2), device="cpu").numpy()   # [1.0,0.5] for mi originally 
-            raw_latents_view1 = raw_latents_view1.numpy()
-            #if args.all_hues: 
-            #    raw_latents_view2[:7] = raw_latents_view1[:7]
-            #else: raise("Other data augmentations are not yet supported")
-
-            raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
-
-        elif args.multimodal and args.all_hues:
-            if args.first_content:
-                raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-                raw_latents_view2 = s.sample_conditional(raw_latents_view1,[0.0,1.0,None,1.0,1.0,None,None,None], size=int(args.n_points/2), device="cpu").numpy()
-                raw_latents_view1 = raw_latents_view1.numpy()
-                raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
-            else:
-                raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-                raw_latents_view2 = s.sample_conditional(raw_latents_view1,[1.0,0.0,None,0.0,0.0,None,None,None], size=int(args.n_points/2), device="cpu").numpy()
-                raw_latents_view1 = raw_latents_view1.numpy()
-                raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
-
-
-        elif args.multimodal and args.all_positions:
-            if args.first_content:
-                raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-                raw_latents_view2 = s.sample_conditional(raw_latents_view1,[None,None,None,0.0,None,0.0,0.0,1.0], size=int(args.n_points/2), device="cpu").numpy()
-                raw_latents_view1 = raw_latents_view1.numpy()
-                raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
-            else:
-                raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-                raw_latents_view2 = s.sample_conditional(raw_latents_view1,[None,None,None,1.0,None,1.0,1.0,0.0], size=int(args.n_points/2), device="cpu").numpy()
-                raw_latents_view1 = raw_latents_view1.numpy()
-                raw_latents = np.append(raw_latents_view1,raw_latents_view2,0) 
-
-
-        elif args.multimodal and args.all_rotations:
-            if args.first_content:
-                raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-                raw_latents_view2 = s.sample_conditional(raw_latents_view1,[0.0,None,None,None,None,1.0], size=int(args.n_points/2), device="cpu").numpy()
-                raw_latents_view1 = raw_latents_view1.numpy()
-                raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
-            else:
-                raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-                raw_latents_view2 = s.sample_conditional(raw_latents_view1,[1.0,None,None,None,None,0.0], size=int(args.n_points/2), device="cpu").numpy()
-                raw_latents_view1 = raw_latents_view1.numpy()
-                raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
-
-        elif args.debug:
-            raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-            raw_latents_view2 = s.sample_conditional(raw_latents_view1,[None,None,None,0.0,None,0.0,0.0,1.0], size=int(args.n_points/2), device="cpu").numpy()
-            raw_latents_view1 = raw_latents_view1.numpy()
-            raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
+    # create generative model
+    latent_spaces_list={}
+    params_marginal = {}
+    params_conditional = {}
+    for part in ["content","style","ms"]:
+        if part != "ms": idx_marg, idx_cond = ("normal" if args.continuous_marginal == "normal" else "uniform"), ("normal" if args.continuous_conditional == "normal" else "uniform")
+        else: idx_marg, idx_cond = "delta", "delta"
+        dist = {"normal": lambda space, mean, params, size, device: space.normal(mean, params["std"], size, device),
+                "uniform" : lambda space, mean, params, size, device: space.uniform(mean, params["a"], params["b"], size, device),
+                "multinomial" : lambda space, mean, params, size, device: space.multinomial(mean, params["classes"], size, weights=params["weights"], uniform=params["uniform"],device=device),
+                "delta":lambda space, mean, params, size, device: space.delta(size, device=device),}
         
-        elif args.debug2:
-            raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-            raw_latents_view2 = s.sample_conditional(raw_latents_view1,[None,None,None,None,None,0.0,0.0,1.0], size=int(args.n_points/2), device="cpu").numpy()
-            raw_latents_view1 = raw_latents_view1.numpy()
-            raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
+        marginal, conditional = dist[idx_marg], dist[idx_cond]
 
-        elif args.debug3: 
-            raw_latents_view1 = s.sample_marginal(int(args.n_points/2), device="cpu")
-            raw_latents_view2 = s.sample_conditional(raw_latents_view1,[None,None,None,0.0,0.0,None,0.0,1.0], size=int(args.n_points/2), device="cpu").numpy()
-            raw_latents_view1 = raw_latents_view1.numpy()
-            raw_latents = np.append(raw_latents_view1,raw_latents_view2,0)
-         
-        else: raw_latents = s.sample_marginal(args.n_points, device="cpu").numpy()
+        for k in list(latent_list[part].keys()):
+            if k != "object":latent_list[part][k]=latent_spaces.LatentSpace(spaces.NBoxSpace(1,min_=args.min,max_=args.max),marginal,conditional)
+            else: latent_list[part][k]=latent_spaces.LatentSpace(
+                                    spaces.NBoxSpace(1,min_=args.min,max_=args.max),
+                                    lambda space, mean, params, size, device: space.multinomial(mean, params["classes"], size, weights=params["weights"], uniform=params["uniform"],device=device),
+                                    lambda space, mean, params, size, device: space.multinomial(mean, params["classes"], size, weights=params["weights"], uniform=params["uniform"],device=device))
 
-    if args.position_only or args.rotation_and_color_only:
-        assert args.n_objects == 1, "Only one object is supported for fixed variables"
+            nb_instances = 1 if ((k not in ["object","position_x","position_y","position_z","rotation_object_alpha","rotation_object_beta","object_hue"]) or (args.n_objects ==1)) else args.n_objects
+            for tmp_idx in range(nb_instances):
+                latent_spaces_list[k+"_object_"+str(tmp_idx)]=latent_list[part][k]
+                params_marginal[k+"_object_"+str(tmp_idx)]={"uniform":{"a":args.uniform_marginal_a,"b":args.uniform_marginal_b},
+                                        "normal":{"std":args.normal_marginal_std},
+                                        "multinomial":{"classes":args.n_objects,"uniform":True,"weights":None},
+                                        "delta":{}}[idx_marg if k != "object" else "multinomial"]
+                params_conditional[k+"_object_"+str(tmp_idx)]={"uniform":{"a":args.uniform_conditional_a if part=="content" else args.uniform_conditional_noise_a,"b":args.uniform_conditional_b if part=="content" else args.uniform_conditional_noise_b},
+                                        "normal":{"std":args.normal_conditional_std if part=="content" else args.normal_conditional_noise},
+                                        "multinomial":{"classes":args.multinomial_noise,"uniform":True,"weights":None},
+                                        "delta":{}}[idx_cond if k != "object" else "multinomial"]
 
-    if args.non_periodic_rotation_and_color:
-        if args.position_only:
-            raw_latents[:, n_non_angular_variables:] = np.array(
-                [-1, -0.66, -0.33, 0, 0.33, 0.66, 1]
-            )
-        if args.rotation_and_color_only or args.rotation_only or args.color_only:
-            raw_latents[:, :n_non_angular_variables] = np.array([0, 0, 0])
-        if args.rotation_only:
-            # additionally fix color
-            raw_latents[:, -3:] = np.array([-1, 0, 1.0])
-        if args.color_only:
-            # additionally fix rotation
-            raw_latents[
-                :, n_non_angular_variables : n_non_angular_variables + 4
-            ] = np.array([-1, -0.5, 0.5, 1.0])
+    # reorder: depending on what's fixed: scene hue, scene rotation, object hue, object rotation, object position, object type
+    s = latent_spaces.ProductLatentSpace(list(latent_spaces_list.values())) # add ordered list
+    params_marginal={k: v for k,v in zip(np.arange(len(list(latent_spaces_list.values()))),list(params_marginal.values()))}
+    params_conditional={k:v for k,v in zip(np.arange(len(list(latent_spaces_list.values()))),list(params_conditional.values()))}
 
-        if args.fixed_spotlight:
-            # assert not args.rotation_only
-            raw_latents[:, [-2, -4]] = np.array([0.0, 0.0])
-
-
-        # the raw latents will later be used for the sampling process
-        if args.deterministic:
-            if args.all_hues:
-                np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.all_positions:
-                np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.all_rotations:
-                np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.debug:
-                np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.debug2:
-                np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.debug3:
-                np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            else:raise("Other data augmentations are not yet supported")
-        else:np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-
-        # get rotation and color latents from large vector
-        rotation_and_color_latents = raw_latents[:, n_non_angular_variables:]
-        rotation_and_color_latents *= np.pi #/2
-
-        # could change this
-        position_latents = raw_latents[:, :n_non_angular_variables]
-        position_latents *= 2   
+    # generating latents - causal dep or not
+    if args.causal:
+        raise NotImplementedError
     else:
-        if args.position_only:
-            spherical_fixed_angular_variables = np.array(
-                [np.pi / 4, np.pi / 4, np.pi / 4, np.pi / 2, np.pi / 2, 0, 1.5 * np.pi]
-            )
-            cartesian_fixed_angular_variables = spaces_utils.spherical_to_cartesian(
-                1, spherical_fixed_angular_variables
-            )
-            raw_latents[:, n_non_angular_variables:] = cartesian_fixed_angular_variables
-        if args.rotation_and_color_only:
-            fixed_non_angular_variables = np.array([0, 0, 0])
-            raw_latents[:, :n_non_angular_variables] = fixed_non_angular_variables
+        raw_latents_view1 = s.sample_marginal(means=torch.zeros([args.n_pairs,len(latent_spaces_list)]),params=params_marginal,size=args.n_pairs, device="cpu")
+        raw_latents_view2 = pd.DataFrame(s.sample_conditional(means=raw_latents_view1,params=params_conditional,size=args.n_pairs, device="cpu").numpy(),columns=list(latent_spaces_list.keys()))
+        raw_latents_view1 = pd.DataFrame(raw_latents_view1.numpy(),columns=list(latent_spaces_list.keys()))
 
-        if args.deterministic:
-            if args.all_hues:np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.all_positions:np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.all_rotations:np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.debug: np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.debug2: np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            elif args.debug3: np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
-            else:raise("Other data augmentations are not yet supported")
-        else:np.save(os.path.join(args.output_folder, "raw_latents.npy"), raw_latents)
+    # add fixed variables 
+    columns=[]
+    fixed_values=[]
+    if not args.hue:
+        columns.extend(["spot_hue_object_0","back_hue_object_0"]+[f"object_hue_object_{k}" for k in range(args.n_objects)])
+        fixed_values.append(0.0*np.ones([args.n_pairs,1]))
+        fixed_values.append(1.0*np.ones([args.n_pairs,1]))
+        for _ in range(args.n_objects):fixed_values.append(-1.0*np.ones([args.n_pairs,1]))
+    if not args.rotation:
+        columns.extend([f"rotation_object_alpha_object_{k}" for k in range(args.n_objects)]+[f"rotation_object_beta_object_{k}" for k in range(args.n_objects)]+["rotation_spot_object_0"])
+        for _ in range(args.n_objects):fixed_values.append(1.0*np.ones([args.n_pairs,1]))
+        for _ in range(args.n_objects):fixed_values.append(-1.0*np.ones([args.n_pairs,1]))
+        for _ in range(args.n_objects):fixed_values.append(-0.5*np.ones([args.n_pairs,1]))
+    if not args.position:
+        columns.extend([f"position_x_object_{k}" for k in range(args.n_objects)]+[f"position_y_object_{k}" for k in range(args.n_objects)]+[f"position_z_object_{k}" for k in range(args.n_objects)])
+        for _ in range(3*args.n_objects):fixed_values.append(np.zeros([args.n_pairs,1]))
+    if not args.object: 
+        columns.extend([f"object_object_{k}" for k in range(args.n_objects)])
+        for _ in range(args.n_objects):fixed_values.append(np.zeros([args.n_pairs,1]))
+    columns, fixed_values = columns, np.asarray(fixed_values)
+    raw_latents_view1=pd.concat([raw_latents_view1,pd.DataFrame(fixed_values,columns)],axis=1)
+    raw_latents_view2=pd.concat([raw_latents_view2,pd.DataFrame(fixed_values,columns)],axis=1)
 
-        # convert angular latents from cartesian to angular representation
-        rotation_and_color_latents = spaces_utils.cartesian_to_spherical(
-            raw_latents[:, n_non_angular_variables:]
-        )[1]
-        # map all but the last latent from [0,pi] to [0, 2pi]
-        rotation_and_color_latents[:, :-1] *= 2
+    # reorder latents
+    static_list=[]
+    static_list.extend(["spot_hue_object_0","back_hue_object_0","rotation_spot_object_0"])
+    static_list.extend(list(filter(lambda x: x.startswith('object_hue'), list(latent_spaces_list.keys()))))
+    static_list.extend(list(filter(lambda x: x.startswith('rotation_object'), list(latent_spaces_list.keys()))))
+    static_list.extend(list(filter(lambda x: x.startswith('position'), list(latent_spaces_list.keys()))))
+    static_list.extend(list(filter(lambda x: x.startswith('object_object'), list(latent_spaces_list.keys()))))
+    raw_latents_view1=raw_latents_view1.reindex(columns=static_list)
+    raw_latents_view2=raw_latents_view2.reindex(columns=static_list)
 
-        position_latents = raw_latents[:, :n_non_angular_variables]
-        # map z coordinate from -1,+1 to 0,+1
-        position_latents[:, 2:n_non_angular_variables:3] = (
-            position_latents[:, 2:n_non_angular_variables:3] + 1
-        ) / 2.0
-        position_latents *= 3
+    # save raw latents 
+    np.save(os.path.join(args.output_folder, "m1","raw_latents.npy"), raw_latents_view1.to_numpy())
+    np.save(os.path.join(args.output_folder, "m2","raw_latents.npy"), raw_latents_view2.to_numpy())
 
-    latents = np.concatenate((position_latents, rotation_and_color_latents), 1)
+    # raw latents to latents: rotation
+    rot_cols = raw_latents_view1.filter(like='rotation')
+    raw_latents_view1[rot_cols.columns]=np.pi*rot_cols
+    rot_cols = raw_latents_view2.filter(like='rotation')
+    raw_latents_view2[rot_cols.columns]=np.pi*rot_cols
 
-    reordered_transposed_latents = []
-    for n in range(args.n_objects):
-        reordered_transposed_latents.append(latents.T[n * 3 : n * 3 + 3])
-        reordered_transposed_latents.append(latents.T[n_non_angular_variables + n * 6 : n_non_angular_variables + n * 6 + 6])
+    # raw latents to latents: hues      
+    hue_cols = raw_latents_view1.filter(like='hue')
+    raw_latents_view1[hue_cols.columns]=np.pi*hue_cols
+    hue_cols = raw_latents_view2.filter(like='hue')
+    raw_latents_view2[hue_cols.columns]=np.pi*hue_cols
 
-    reordered_transposed_latents.append(latents.T[-1].reshape(1, -1))
-    reordered_latents = np.concatenate(reordered_transposed_latents, 0).T
+    # raw latents to latents: position     
+    pos_cols = raw_latents_view1.filter(like='position')
+    raw_latents_view1[pos_cols.columns]=2*pos_cols
+    pos_cols = raw_latents_view2.filter(like='position')
+    raw_latents_view2[pos_cols.columns]=2*pos_cols
 
-    # the latents will be used by the rendering process to generate the images
-    if args.deterministic:
-        if args.all_hues:
-            np.save(os.path.join(args.output_folder, "latents.npy"), reordered_latents)
-        elif args.all_positions:
-            np.save(os.path.join(args.output_folder, "latents.npy"), reordered_latents)
-        elif args.all_rotations:
-            np.save(os.path.join(args.output_folder, "latents.npy"), reordered_latents)
-        elif args.debug: 
-            np.save(os.path.join(args.output_folder, "latents.npy"), reordered_latents)
-        elif args.debug2: 
-            np.save(os.path.join(args.output_folder, "latents.npy"), reordered_latents)
-        elif args.debug3: 
-            np.save(os.path.join(args.output_folder, "latents.npy"), reordered_latents)
-        else:raise("Other data augmentations are not yet supported")
-    else:np.save(os.path.join(args.output_folder, "latents.npy"), reordered_latents)
-
-    print('Size of the latents', reordered_latents.shape)
-
+    # save Blender latents
+    np.save(os.path.join(args.output_folder, "m1","latents.npy"), raw_latents_view1.to_numpy())
+    np.save(os.path.join(args.output_folder, "m2","latents.npy"), raw_latents_view2.to_numpy())
 
 if __name__ == "__main__":
     main()

@@ -12,37 +12,50 @@ import numpy as np
 import argparse
 import pathlib
 import colorsys
-import sys
 import site
+
+SPOT_POS=2
+SPOT_HUE=0
+BKG_HUE=1
+OBJECT_HUE=3
+OBJECT_POS=[6,7,8]
+OBJECT_ROT=[4,5]
+OBJECT_TYPE=9
+
+SHAPE_DICT={0:"Teapot",
+            1:"Armardillo",
+            2:"Bunny",
+            3:"Cow",
+            4:"Dragon",
+            5:"Head",
+            6:"Horse",
+            7:"Spot",
+            }
+
+# fix the third rotation angle
 
 def main(args):
 
+    # defining output folder from given path
     args.output_folder = pathlib.Path(args.output_folder).absolute()
 
     # loading generative factors
     latents_path = os.path.join(args.output_folder, "latents.npy")
     if not os.path.exists(latents_path):
         raise ValueError("Latents could not be found; run latent generation first")
-
     latents = np.load(latents_path)
-    n_samples = len(latents)
-    n_object = (latents.shape[1] // 9) # without object
-
-    # what if we want to have multiple textures, change object type
+    n_samples = latents.shape[0]
+    n_object = ((latents.shape[1]-3) // 7) 
+    n_diff_object = len(list(np.unique(latents[:,-1])))
 
     # setting the material name
     if args.material_names is None:
         args.material_names = ["Rubber"] * n_object 
     elif args.material_names in ["Rubber","Crystal","Metallic"]: 
         args.material_names = args.material_names * n_object
+    elif isinstance(args.material_names,list) and len(args.material_names) == n_object: 
+        pass
     else: assert NotImplementedError("Material name should Rubber, Metallic or Crystal")
-
-    # setting the shape
-    if args.shape_names is None:
-        args.shape_names = ["Teapot"] * n_object
-    elif args.shape_names in ["Armardillo","Bunny","Cow","Dragon","Head","Horse","Spot","Teapot"]:
-        args.shape_names = args.shape_names * n_object
-    else: assert NotImplementedError("Shape name should be Armadillo, Bunny, Cow, Dragon, Head, Horse, Spot or Teapot")
 
     # defining instance number for given batch
     indices = np.array_split(np.arange(n_samples), args.n_batches)[args.batch_index]
@@ -51,17 +64,19 @@ def main(args):
     # defining image folder
     output_image_folder = os.path.join(args.output_folder, "images")
 
-    # creating default scene
-    initialize_renderer(
-        args.shape_names,
-        args.material_names,
-        not args.no_spotlights,
-        render_tile_size=256 if args.use_gpu else 64,
-        use_gpu=args.use_gpu,
-    )
-
     # image creation
     for _, idx in enumerate(indices):
+
+        shapes=[SHAPE_DICT[k] for k in idx[-n_object:]]
+        
+        # creating default scene
+        initialize_renderer(
+            shapes,
+            args.material_names,
+            not args.no_spotlights,
+            render_tile_size=256 if args.use_gpu else 64,
+            use_gpu=args.use_gpu,
+        )
         output_filename = os.path.join(
             output_image_folder,
             f"{str(idx).zfill(6)}.png",
@@ -260,9 +275,13 @@ def add_objects_and_lights(shape_names, material_names, add_lights, base_path):
 def update_objects_and_lights(latents, material_names, update_lights):
     """Parse latents and update the object(s) position, rotation and color
     as well as the spotlight's position and color."""
+    scene_latents = latents[[SPOT_HUE,SPOT_POS]]
+    objects_latents = latents[BKG_HUE+1:]
 
-    objects_latents = np.array_split(latents, len(material_names))
-
+    new_order=[]
+    for i in range(7):
+        new_order.append(list(np.arange(objects_latents.shape[-1])[i::len(material_names)]))
+    object_latents=np.array_split(object_latents[:,new_order],len(material_names))
     max_object_size = max(
         [max(o.dimensions) for o in bpy.data.objects if "Object_" in o.name]
     )
@@ -281,16 +300,18 @@ def update_objects_and_lights(latents, material_names, update_lights):
         # update object location and rotation
         object = bpy.data.objects[object_name]
         object.location = (
-            object_latents[0],
-            object_latents[1],
-            object_latents[2] + max_object_size / 2,
+            object_latents[3],
+            object_latents[4],
+            object_latents[5] + max_object_size / 2,
         )
 
-        object.rotation_euler = tuple(object_latents[3:6])  # replace gamma angle
+        object.rotation_euler = tuple(np.concatenate([object_latents[1:2],0.0],axis=-1))  # replace gamma angle
 
         # update object color
+        saturation=1.0
+        value=1.0
         rgba_object = colorsys.hsv_to_rgb(
-            object_latents[7] / (2.0 * np.pi), 1.0, 1.0,
+            object_latents[0] / (2.0 * np.pi), saturation, value,
         ) + (1.0,)
 
         render_utils.change_material(
@@ -299,12 +320,14 @@ def update_objects_and_lights(latents, material_names, update_lights):
 
         if update_lights:
             # update light color
-            rgb_light = colorsys.hsv_to_rgb(object_latents[8] / (2.0 * np.pi), 0.8, 1.0)
+            saturation=0.8
+            value=1.0
+            rgb_light = colorsys.hsv_to_rgb(scene_latents[0] / (2.0 * np.pi), saturation,value)
             bpy.data.objects[f"Spotlight_Object_{i}"].data.color = rgb_light
             # update light location
             bpy.data.objects[f"Spotlight_Object_{i}"].location = (
-                4 * np.sin(object_latents[6]),
-                4 * np.cos(object_latents[6]),
+                4 * np.sin(scene_latents[1]),
+                4 * np.cos(scene_latents[1]),
                 6 + max_object_size,
             )
 
@@ -312,6 +335,7 @@ def update_objects_and_lights(latents, material_names, update_lights):
 def render_sample(latents, material_names, include_lights, output_filename, save_scene):
     """Update the scene based on the latents and render the scene and save as an image."""
 
+    # background saturation and value
     saturation = 0.6
     value = 1.0
 
@@ -321,9 +345,7 @@ def render_sample(latents, material_names, include_lights, output_filename, save
     # set objects and lights
     update_objects_and_lights(latents, material_names, include_lights)
 
-    rgba_background = colorsys.hsv_to_rgb(latents[9] / (2.0 * np.pi), saturation, value) + (
-        1.0,
-    ) 
+    rgba_background = colorsys.hsv_to_rgb(latents[BKG_HUE] / (2.0 * np.pi), saturation, value) + (1.0,) 
     render_utils.change_material(
         bpy.data.objects["Ground"].data.materials[-1], Color=rgba_background,
     )
@@ -362,6 +384,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-folder", required=True,type=str)
     parser.add_argument("--n-batches", default=100,type=int)
+    parser.add_argument("--nlatents", default=9, type=int)
     parser.add_argument("--batch-index", default=0, type=int)
     parser.add_argument("--no-spotlights", action="store_true")
     parser.add_argument("--use-gpu", action="store_true")

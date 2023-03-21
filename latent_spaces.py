@@ -52,22 +52,18 @@ class ProductLatentSpace(LatentSpace):
     def __init__(self, spaces: List[LatentSpace]):
         self.spaces = spaces
 
-    def sample_conditional(self, z, std, size, **kwargs):
+    def sample_conditional(self, means, params, size, **kwargs):
         x = []
-        n = 0
         for i, s in enumerate(self.spaces):
-            if len(z.shape) == 1:
-                z_s = z[n : n + s.space.n]
+            if len(means.shape) == 1:
+                z_s = means[i]
             else:
-                z_s = z[:, n : n + s.space.n]
-            n += s.space.n
-            x.append(s.sample_conditional(mean=z_s, std=std[i], size=size, **kwargs))
-
+                z_s = means[:, i]
+            x.append(s.sample_conditional(mean=z_s, params=params[i], size=size, **kwargs))
         return torch.cat(x, -1)
 
-    def sample_marginal(self, size, **kwargs):
-        x = [s.sample_marginal(size=size, **kwargs) for s in self.spaces]
-
+    def sample_marginal(self, means, params, size, **kwargs):
+        x = [s.sample_marginal(means[:,i], params[i], size=size, **kwargs) for i, s in enumerate(self.spaces)]
         return torch.cat(x, -1)
 
     def sample_marginal_causal(self, std, size, first_content, **kwargs):

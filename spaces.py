@@ -33,229 +33,229 @@ class Space(ABC):
         pass
 
 
-class NRealSpace(Space):
-    """Unconstrained space over the real numbers, i.e., R^N."""
+# class NRealSpace(Space):
+#     """Unconstrained space over the real numbers, i.e., R^N."""
 
-    def __init__(self, n):
-        self.n = n
+#     def __init__(self, n):
+#         self.n = n
 
-    @property
-    def dim(self):
-        return self.n
+#     @property
+#     def dim(self):
+#         return self.n
 
-    def uniform(self, size, device="cpu"):
-        raise NotImplementedError("Not defined on R^n")
+#     def uniform(self, size, device="cpu"):
+#         raise NotImplementedError("Not defined on R^n")
 
-    def normal(self, mean, std, size, device="cpu"):
-        """Sample from a Normal distribution in R^N.
+#     def normal(self, mean, std, size, device="cpu"):
+#         """Sample from a Normal distribution in R^N.
 
-        Args:
-            mean: Value(s) to sample around.
-            std: Concentration parameter of the distribution (=standard deviation).
-            size: Number of samples to draw.
-            device: torch device identifier
-        """
+#         Args:
+#             mean: Value(s) to sample around.
+#             std: Concentration parameter of the distribution (=standard deviation).
+#             size: Number of samples to draw.
+#             device: torch device identifier
+#         """
 
-        if len(mean.shape) == 1 and mean.shape[0] == self.n:
-            mean = mean.unsqueeze(0)
-        if not torch.is_tensor(std):
-            std = torch.ones(self.n) * std
-        if len(std.shape) == 1 and std.shape[0] == self.n:
-            std = std.unsqueeze(0)
-        assert len(mean.shape) == 2
-        assert len(std.shape) == 2
+#         if len(mean.shape) == 1 and mean.shape[0] == self.n:
+#             mean = mean.unsqueeze(0)
+#         if not torch.is_tensor(std):
+#             std = torch.ones(self.n) * std
+#         if len(std.shape) == 1 and std.shape[0] == self.n:
+#             std = std.unsqueeze(0)
+#         assert len(mean.shape) == 2
+#         assert len(std.shape) == 2
 
-        if torch.is_tensor(mean):
-            mean = mean.to(device)
-        if torch.is_tensor(std):
-            std = std.to(device)
+#         if torch.is_tensor(mean):
+#             mean = mean.to(device)
+#         if torch.is_tensor(std):
+#             std = std.to(device)
 
-        return torch.randn((size, self.n), device=device) * std + mean
+#         return torch.randn((size, self.n), device=device) * std + mean
 
-    def laplace(self, mean, lbd, size, device="cpu"):
-        """Sample from a Laplace distribution in R^N.
+#     def laplace(self, mean, lbd, size, device="cpu"):
+#         """Sample from a Laplace distribution in R^N.
 
-        Args:
-            mean: Value(s) to sample around.
-            lbd: Concentration parameter of the distribution.
-            size: Number of samples to draw.
-            device: torch device identifier
-        """
+#         Args:
+#             mean: Value(s) to sample around.
+#             lbd: Concentration parameter of the distribution.
+#             size: Number of samples to draw.
+#             device: torch device identifier
+#         """
 
-        if len(mean.shape) == 1 and mean.shape[0] == self.n:
-            mean = mean.unsqueeze(0)
-        assert len(mean.shape) == 2
-        assert isinstance(lbd, float)
+#         if len(mean.shape) == 1 and mean.shape[0] == self.n:
+#             mean = mean.unsqueeze(0)
+#         assert len(mean.shape) == 2
+#         assert isinstance(lbd, float)
 
-        mean = mean.to(device)
+#         mean = mean.to(device)
 
-        return (
-            torch.distributions.Laplace(torch.zeros(self.n), lbd)
-            .rsample(sample_shape=(size,))
-            .to(device)
-            + mean
-        )
+#         return (
+#             torch.distributions.Laplace(torch.zeros(self.n), lbd)
+#             .rsample(sample_shape=(size,))
+#             .to(device)
+#             + mean
+#         )
 
-    def generalized_normal(self, mean, lbd, p, size, device=None):
-        """Sample from a Generalized Normal distribution in R^N.
+#     def generalized_normal(self, mean, lbd, p, size, device=None):
+#         """Sample from a Generalized Normal distribution in R^N.
 
-        Args:
-            mean: Value(s) to sample around.
-            lbd: Concentration parameter of the distribution.
-            p: Exponent of the distribution.
-            size: Number of samples to draw.
-            device: torch device identifier
-        """
+#         Args:
+#             mean: Value(s) to sample around.
+#             lbd: Concentration parameter of the distribution.
+#             p: Exponent of the distribution.
+#             size: Number of samples to draw.
+#             device: torch device identifier
+#         """
 
-        if len(mean.shape) == 1 and mean.shape[0] == self.n:
-            mean = mean.unsqueeze(0)
-        assert len(mean.shape) == 2
-        assert isinstance(lbd, float)
+#         if len(mean.shape) == 1 and mean.shape[0] == self.n:
+#             mean = mean.unsqueeze(0)
+#         assert len(mean.shape) == 2
+#         assert isinstance(lbd, float)
 
-        result = sut.sample_generalized_normal(mean, lbd, p, (size, self.n))
+#         result = sut.sample_generalized_normal(mean, lbd, p, (size, self.n))
 
-        if device is not None:
-            result = result.to(device)
+#         if device is not None:
+#             result = result.to(device)
 
-        return result
+#         return result
 
 
-class NSphereSpace(Space):
-    """N-dimensional hypersphere, i.e. {x | |x| = r and x € R^N}."""
+# class NSphereSpace(Space):
+#     """N-dimensional hypersphere, i.e. {x | |x| = r and x € R^N}."""
 
-    def __init__(self, n, r=1):
-        self.n = n
-        self._n_sub = n - 1
-        self.r = r
+#     def __init__(self, n, r=1):
+#         self.n = n
+#         self._n_sub = n - 1
+#         self.r = r
 
-    @property
-    def dim(self):
-        return self.n
+#     @property
+#     def dim(self):
+#         return self.n
 
-    def uniform(self, size, device="cpu"):
-        x = torch.randn((size, self.n), device=device)
-        x /= torch.sqrt(torch.sum(x ** 2, dim=-1, keepdim=True))
+#     def uniform(self, size, device="cpu"):
+#         x = torch.randn((size, self.n), device=device)
+#         x /= torch.sqrt(torch.sum(x ** 2, dim=-1, keepdim=True))
 
-        return x
+#         return x
 
-    def normal(self, mean, std, size, device="cpu"):
-        """Sample from a Normal distribution in R^N and then project back on the sphere.
+#     def normal(self, mean, std, size, device="cpu"):
+#         """Sample from a Normal distribution in R^N and then project back on the sphere.
 
-        Args:
-            mean: Value(s) to sample around.
-            std: Concentration parameter of the distribution (=standard deviation).
-            size: Number of samples to draw.
-            device: torch device identifier
-        """
+#         Args:
+#             mean: Value(s) to sample around.
+#             std: Concentration parameter of the distribution (=standard deviation).
+#             size: Number of samples to draw.
+#             device: torch device identifier
+#         """
 
-        assert len(mean.shape) == 1 or (len(mean.shape) == 2 and len(mean) == size)
-        assert mean.shape[-1] == self.n
+#         assert len(mean.shape) == 1 or (len(mean.shape) == 2 and len(mean) == size)
+#         assert mean.shape[-1] == self.n
 
-        if len(mean.shape) == 1:
-            mean = mean.unsqueeze(0)
+#         if len(mean.shape) == 1:
+#             mean = mean.unsqueeze(0)
 
-        mean = mean.to(device)
-        if not torch.is_tensor(std):
-            std = torch.ones(self.n) * std
-        std = std.to(device)
+#         mean = mean.to(device)
+#         if not torch.is_tensor(std):
+#             std = torch.ones(self.n) * std
+#         std = std.to(device)
 
-        assert mean.shape[1] == self.n
-        assert torch.allclose(
-            torch.sqrt((mean ** 2).sum(-1)), torch.Tensor([self.r]).to(device)
-        )
+#         assert mean.shape[1] == self.n
+#         assert torch.allclose(
+#             torch.sqrt((mean ** 2).sum(-1)), torch.Tensor([self.r]).to(device)
+#         )
 
-        result = torch.randn((size, self.n), device=device) * std + mean
-        # project back on sphere
-        result /= torch.sqrt(torch.sum(result ** 2, dim=-1, keepdim=True))
+#         result = torch.randn((size, self.n), device=device) * std + mean
+#         # project back on sphere
+#         result /= torch.sqrt(torch.sum(result ** 2, dim=-1, keepdim=True))
 
-        return result
+#         return result
 
-    def laplace(self, mean, lbd, size, device="cpu"):
-        """Sample from a Laplace distribution in R^N and then project back on the sphere.
+#     def laplace(self, mean, lbd, size, device="cpu"):
+#         """Sample from a Laplace distribution in R^N and then project back on the sphere.
 
-        Args:
-            mean: Value(s) to sample around.
-            lbd: Concentration parameter of the distribution.
-            size: Number of samples to draw.
-            device: torch device identifier
-        """
+#         Args:
+#             mean: Value(s) to sample around.
+#             lbd: Concentration parameter of the distribution.
+#             size: Number of samples to draw.
+#             device: torch device identifier
+#         """
 
-        assert len(mean.shape) == 1 or (len(mean.shape) == 2 and len(mean) == size)
-        assert mean.shape[-1] == self.n
+#         assert len(mean.shape) == 1 or (len(mean.shape) == 2 and len(mean) == size)
+#         assert mean.shape[-1] == self.n
 
-        if len(mean.shape) == 1:
-            mean = mean.unsqueeze(0)
+#         if len(mean.shape) == 1:
+#             mean = mean.unsqueeze(0)
 
-        mean = mean.to(device)
+#         mean = mean.to(device)
 
-        assert mean.shape[1] == self.n
-        assert torch.allclose(
-            torch.sqrt((mean ** 2).sum(-1)), torch.Tensor([self.r]).to(device)
-        )
+#         assert mean.shape[1] == self.n
+#         assert torch.allclose(
+#             torch.sqrt((mean ** 2).sum(-1)), torch.Tensor([self.r]).to(device)
+#         )
 
-        result = NRealSpace(self.n).laplace(mean, lbd, size, device)
-        # project back on sphere
-        result /= torch.sqrt(torch.sum(result ** 2, dim=-1, keepdim=True))
+#         result = NRealSpace(self.n).laplace(mean, lbd, size, device)
+#         # project back on sphere
+#         result /= torch.sqrt(torch.sum(result ** 2, dim=-1, keepdim=True))
 
-        return result
+#         return result
 
-    def generalized_normal(self, mean, lbd, p, size, device="cpu"):
-        """Sample from a Generalized Normal distribution in R^N and then project back on the sphere.
+#     def generalized_normal(self, mean, lbd, p, size, device="cpu"):
+#         """Sample from a Generalized Normal distribution in R^N and then project back on the sphere.
 
-        Args:
-            mean: Value(s) to sample around.
-            lbd: Concentration parameter of the distribution.
-            p: Exponent of the distribution.
-            size: Number of samples to draw.
-            device: torch device identifier
-        """
+#         Args:
+#             mean: Value(s) to sample around.
+#             lbd: Concentration parameter of the distribution.
+#             p: Exponent of the distribution.
+#             size: Number of samples to draw.
+#             device: torch device identifier
+#         """
 
-        assert len(mean.shape) == 1 or (len(mean.shape) == 2 and len(mean) == size)
-        assert mean.shape[-1] == self.n
+#         assert len(mean.shape) == 1 or (len(mean.shape) == 2 and len(mean) == size)
+#         assert mean.shape[-1] == self.n
 
-        if len(mean.shape) == 1:
-            mean = mean.unsqueeze(0)
+#         if len(mean.shape) == 1:
+#             mean = mean.unsqueeze(0)
 
-        mean = mean.to(device)
+#         mean = mean.to(device)
 
-        assert mean.shape[1] == self.n
-        assert torch.allclose(
-            torch.sqrt((mean ** 2).sum(-1)), torch.Tensor([self.r]).to(device)
-        )
+#         assert mean.shape[1] == self.n
+#         assert torch.allclose(
+#             torch.sqrt((mean ** 2).sum(-1)), torch.Tensor([self.r]).to(device)
+#         )
 
-        result = NRealSpace(self.n).generalized_normal(
-            mean=mean, lbd=lbd, p=p, size=size, device=device
-        )
-        # project back on sphere
-        result /= torch.sqrt(torch.sum(result ** 2, dim=-1, keepdim=True))
+#         result = NRealSpace(self.n).generalized_normal(
+#             mean=mean, lbd=lbd, p=p, size=size, device=device
+#         )
+#         # project back on sphere
+#         result /= torch.sqrt(torch.sum(result ** 2, dim=-1, keepdim=True))
 
-        return result
+#         return result
 
-    def von_mises_fisher(self, mean, kappa, size, device="cpu"):
-        """Sample from a von Mises-Fisher distribution (=Normal distribution on a hypersphere).
+#     def von_mises_fisher(self, mean, kappa, size, device="cpu"):
+#         """Sample from a von Mises-Fisher distribution (=Normal distribution on a hypersphere).
 
-        Args:
-            mean: Value(s) to sample around.
-            kappa: Concentration parameter of the distribution.
-            size: Number of samples to draw.
-            device: torch device identifier
-        """
+#         Args:
+#             mean: Value(s) to sample around.
+#             kappa: Concentration parameter of the distribution.
+#             size: Number of samples to draw.
+#             device: torch device identifier
+#         """
 
-        assert len(mean.shape) == 1 or (len(mean.shape) == 2 and len(mean) == size)
-        assert mean.shape[-1] == self.n
+#         assert len(mean.shape) == 1 or (len(mean.shape) == 2 and len(mean) == size)
+#         assert mean.shape[-1] == self.n
 
-        mean = mean.cpu().detach().numpy()
+#         mean = mean.cpu().detach().numpy()
 
-        if len(mean.shape) == 1:
-            mean = np.repeat(np.expand_dims(mean, 0), size, axis=0)
+#         if len(mean.shape) == 1:
+#             mean = np.repeat(np.expand_dims(mean, 0), size, axis=0)
 
-        assert mean.shape[1] == self.n
-        assert np.allclose(np.sqrt((mean ** 2).sum(-1)), self.r)
+#         assert mean.shape[1] == self.n
+#         assert np.allclose(np.sqrt((mean ** 2).sum(-1)), self.r)
 
-        samples_np = vmf.sample_vMF(mean, kappa, size)
-        samples = torch.Tensor(samples_np).to(device)
+#         samples_np = vmf.sample_vMF(mean, kappa, size)
+#         samples = torch.Tensor(samples_np).to(device)
 
-        return samples
+#         return samples
 
 
 class NBoxSpace(Space):
@@ -291,10 +291,9 @@ class NBoxSpace(Space):
         """
 
         assert len(mean.shape) == 1 or (len(mean.shape) == 2 and len(mean) == size)
-        assert mean.shape[-1] == self.n
 
         if len(mean.shape) == 1:
-            mean = mean.unsqueeze(0)
+            mean = mean.unsqueeze(-1)
 
         mean = mean.to(device)
 
@@ -355,6 +354,19 @@ class NBoxSpace(Space):
         )
 
         return values.view((size, self.n))
+    
+    def multinomial(self, mean, classes, size, weights=None, uniform=True, device=None):
+
+        if uniform:
+            weights = (1/classes)*torch.ones([classes])
+        else: assert weights != None, "Provide weights for object distribution"
+        
+        changes = torch.reshape(
+                    torch.multinomial(weights, size * 1, replacement=True),
+                    [size,],
+                )
+        return (mean + changes).unsqueeze(-1)
+
 
     def generalized_normal(self, mean, lbd, p, size, device=None):
         """Sample from a Generalized Normal distribution in R^N and then restrict the samples to a box.

@@ -81,6 +81,35 @@ Each folder contains a full dataset with specific <span style="color: RoyalBlue;
 ## Custom Generation
 - - -
 
+The following command generates latents for 10 pairs of images depicting a scene with two objects. In particular, image pairs display variable object types, object positions, object rotation, spotlight rotation and scene hues.
+In this particular setting ```---object-content``` sets the object type as content, ```---position-style``` sets the object position as style, ```---rotation-style``` sets the object and spotlight rotation as style and ```---hue-ms``` sets the scene hues as modality-specific information. By default, view 1 and view 2 content and style information follow uniform and normal distributions respectively. However, the default settings can be adapted by setting the ```---continuous-marginal``` and ```---continuous-conditional``` parameters to a ```normal``` or ```uniform``` distributions. In addition, the standard deviation of normal marginal and conditional distribution can be adjusted to custom settings by adjusting the ```---normal-marginal-std```,```---normal-conditional-std``` (for style variables),```---normal-conditional-noise``` (for content variables) respectively. In a similar fashion, the lower and upper bound of uniform distributions can be customized by djusting the ```--uniform-marginal-a ``` (lower bound), ```--uniform-marginal-b ``` (upper bound), ```--uniform-conditional-a ``` (lower bound - for content variables), ```--uniform-conditional-b ``` (upper bound - for content variables), ```--uniform-conditional-noise-a ``` (lower bound - for style variables), ```--uniform-conditional-noise-b ``` (upper bound - for style variables)
+
+```
+OUTPUT_FOLDER="example"    # output folder for latent and image storage
+SAMPLE_PAIRS=10            # number of sample pairs
+NB_OBJECTS=2               # number of objects per image
+
+python generate_clevr_dataset_latents.py --output-folder ${OUTPUT_FOLDER} --n-pairs ${SAMPLE_PAIRS} --object --position --rotation --hue --object-content --position-style --rotation-style --hue-ms --n-object ${NB_OBJECTS} 
+```
+
+The following command renders images based on previously generated latents stored in ```${OUTPUT_FOLDER}/m{1-2}/latents.npy```. Images are rendered and stored in ```${OUTPUT_FOLDER}/images```.
+
+```
+############# ADAPT THE FOLLOWING PARAMETERS ###############
+BLENDER_DIR=/example/blender                        # path to blender software
+OUTPUT_FOLDER="example"                             # output folder for latent and image storage
+LATENT_FOLDER="example_subfolder"
+MATERIAL="MyMetal"                                  # adjust: MyMetal, MyCristal, MyRubber
+############################################################
+
+N_BATCHES=10
+
+for (( i=0; i<=$N_BATCHES; i++ ))
+do
+    ${BLENDER_DIR} -noaudio --background --python generate_clevr_dataset_images.py --use-gpu --output-folder ${OUTPUT_FOLDER}/${LATENT_FOLDER} --n-batches 10 --batch-index ${i} --material-names ${MATERIAL} --no_range_change
+done
+```
+
 ## BibTeX
 - - -
 If you find our datasets useful, please cite our paper:
